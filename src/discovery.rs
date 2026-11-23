@@ -236,7 +236,8 @@ fn category_group_rank(name: &str) -> (&'static str, usize, usize) {
         (
             "Career, Learning & Finance",
             &[
-                "Europe & Germany: MSc, Studying & Visas",
+                "Germany: Studying & Uni Admission",
+                "Europe (Rest): Studying & Visas",
                 "Career & Job Skills",
                 "Productivity & Habits",
                 "Study Methods & Learning",

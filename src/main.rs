@@ -1,24 +1,41 @@
+mod auth;
 mod db;
 mod discovery;
 mod import;
 mod models;
 mod routes;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 struct Config {
     db_path: PathBuf,
     import_csv: Option<PathBuf>,
+    host: IpAddr,
     port: u16,
     serve_after_import: bool,
 }
 
 fn parse_args() -> Result<Config, String> {
+    let default_db = std::env::var("WATCHLIST_DB")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("./data/watchlist.db"));
+
+    let default_host: IpAddr = std::env::var("WATCHLIST_HOST")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+
+    let default_port: u16 = std::env::var("WATCHLIST_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3000);
+
     let mut cfg = Config {
-        db_path: PathBuf::from("./data/watchlist.db"),
+        db_path: default_db,
         import_csv: None,
-        port: 3000,
+        host: default_host,
+        port: default_port,
         serve_after_import: false,
     };
 
@@ -36,6 +53,13 @@ fn parse_args() -> Result<Config, String> {
                 let val = args.get(i).ok_or("--import requires a CSV path")?;
                 cfg.import_csv = Some(PathBuf::from(val));
             }
+            "--host" => {
+                i += 1;
+                let val = args.get(i).ok_or("--host requires an IP address")?;
+                cfg.host = val
+                    .parse::<IpAddr>()
+                    .map_err(|_| format!("invalid IP address '{val}'"))?;
+            }
             "--port" => {
                 i += 1;
                 let val = args.get(i).ok_or("--port requires a port number")?;
@@ -47,9 +71,10 @@ fn parse_args() -> Result<Config, String> {
                 cfg.serve_after_import = true;
             }
             "--help" | "-h" => {
-                println!("Watchlist (Stage 1)");
+                println!("Watchlist");
                 println!("Usage:");
-                println!("  watchlist [--db <path>] [--port <port>] [--import <csv_path>] [--serve]");
+                println!("  watchlist [--db <path>] [--host <ip>] [--port <port>] [--import <csv_path>] [--serve]");
+                println!("Env vars: WATCHLIST_DB, WATCHLIST_HOST, WATCHLIST_PORT, WATCHLIST_PASSWORD, WATCHLIST_SESSION_SECRET, WATCHLIST_SECURE_COOKIE");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {other}")),
@@ -102,10 +127,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let state = routes::AppState { pool, fts5_enabled };
+    let auth = auth::AuthConfig::from_env();
+    if !cfg.host.is_loopback() && !auth.is_enabled() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Refusing to bind to non-loopback address without WATCHLIST_PASSWORD set.",
+        )
+        .into());
+    }
+
+    let state = routes::AppState {
+        pool,
+        fts5_enabled,
+        auth,
+    };
     let app = routes::build_router(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], cfg.port));
-    println!("Watchlist listening on http://{addr} (local only)");
+    let addr = SocketAddr::new(cfg.host, cfg.port);
+    println!("Watchlist listening on http://{addr}");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)

@@ -3,9 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0d11" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Watchlist</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" href="/static/icon-192.png" />
+  <link rel="apple-touch-icon" href="/static/icon-192.png" />
   <link rel="stylesheet" href="/static/style.css" />
   <script src="/static/htmx.min.js" defer></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+    }
+  </script>
 </head>
 <body>
   <header class="topbar">

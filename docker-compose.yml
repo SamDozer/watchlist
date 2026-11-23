@@ -1,0 +1,16 @@
+services:
+  watchlist:
+    build: .
+    container_name: watchlist
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      WATCHLIST_DB: /data/watchlist.db
+      WATCHLIST_HOST: 0.0.0.0
+      WATCHLIST_PORT: 3000
+      WATCHLIST_PASSWORD: ${WATCHLIST_PASSWORD:?Set WATCHLIST_PASSWORD in .env}
+      WATCHLIST_SESSION_SECRET: ${WATCHLIST_SESSION_SECRET:-}
+      WATCHLIST_SECURE_COOKIE: ${WATCHLIST_SECURE_COOKIE:-1}

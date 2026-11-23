@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0d11" />
+  <title>Sign in — Watchlist</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" href="/static/icon-192.png" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>Watchlist</h1>
+    <p class="login-sub">Private video discovery library</p>
+
+    {% if let Some(err) = error %}
+    <div class="login-error" role="alert">{{ err }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="login-form">
+      <label for="password" class="sr-only">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        placeholder="Enter password"
+        required
+        autofocus
+        autocomplete="current-password"
+      />
+      <button type="submit" class="btn btn-choose">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>

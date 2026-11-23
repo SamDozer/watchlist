@@ -1,8 +1,9 @@
 use askama::Template;
 use axum::{
     extract::{Form, Path, Query, State},
-    http::StatusCode,
-    response::{Html, IntoResponse},
+    http::{header, StatusCode},
+    middleware,
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
 };
@@ -10,6 +11,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
+use crate::auth::{require_auth, AuthConfig};
 use crate::discovery::{
     apply_activity_action, choose_for_me, get_bucket_counts, get_category_groups, get_nav_counts,
     get_subgenres, query_videos, ActivityAction,
@@ -21,13 +23,22 @@ use crate::models::{
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
+    #[allow(dead_code)]
     pub fts5_enabled: bool,
+    pub auth: AuthConfig,
+}
+
+#[derive(Template)]
+#[template(path = "login.html")]
+struct LoginTemplate {
+    error: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
     tab: String,
+    auth_enabled: bool,
     counts: NavCounts,
     buckets: BucketCounts,
     params: FilterParams,
@@ -65,6 +76,7 @@ struct CardResponseTemplate {
     v: VideoCardRow,
     counts: NavCounts,
     tab: String,
+    auth_enabled: bool,
 }
 
 #[derive(Template)]
@@ -73,6 +85,7 @@ struct ChooseSpotlightTemplate {
     rec: Option<Recommendation>,
     counts: Option<NavCounts>,
     tab: String,
+    auth_enabled: bool,
     include_nav_oob: bool,
 }
 
@@ -85,6 +98,11 @@ pub struct ActionQuery {
     tab: String,
 }
 
+#[derive(Deserialize)]
+pub struct LoginForm {
+    password: String,
+}
+
 fn render_html<T: Template>(tmpl: T) -> impl IntoResponse {
     match tmpl.render() {
         Ok(body) => (StatusCode::OK, Html(body)).into_response(),
@@ -94,6 +112,42 @@ fn render_html<T: Template>(tmpl: T) -> impl IntoResponse {
         )
             .into_response(),
     }
+}
+
+async fn login_get_handler(State(state): State<AppState>) -> impl IntoResponse {
+    if !state.auth.is_enabled() {
+        return Redirect::to("/").into_response();
+    }
+    render_html(LoginTemplate { error: None }).into_response()
+}
+
+async fn login_post_handler(
+    State(state): State<AppState>,
+    Form(form): Form<LoginForm>,
+) -> impl IntoResponse {
+    if !state.auth.is_enabled() {
+        return Redirect::to("/").into_response();
+    }
+    if state.auth.verify_password(&form.password) {
+        let cookie = state.auth.issue_session_cookie();
+        return (
+            [(header::SET_COOKIE, cookie)],
+            Redirect::to("/"),
+        )
+            .into_response();
+    }
+    (
+        StatusCode::UNAUTHORIZED,
+        render_html(LoginTemplate {
+            error: Some("Incorrect password".to_string()),
+        }),
+    )
+        .into_response()
+}
+
+async fn logout_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let cookie = state.auth.clear_session_cookie();
+    ([(header::SET_COOKIE, cookie)], Redirect::to("/login")).into_response()
 }
 
 async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Option<&str>) -> impl IntoResponse {
@@ -120,9 +174,11 @@ async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Opti
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
     };
 
+    let auth_enabled = state.auth.is_enabled();
     match query_videos(&state.pool, &params).await {
         Ok((filtered_total, videos, next_offset)) => render_html(IndexTemplate {
             tab: params.tab.clone(),
+            auth_enabled,
             counts,
             buckets,
             params,
@@ -198,11 +254,13 @@ async fn choose_handler(
     Form(params): Form<FilterParams>,
 ) -> impl IntoResponse {
     let tab = params.normalized_tab().to_string();
+    let auth_enabled = state.auth.is_enabled();
     match choose_for_me(&state.pool, &params).await {
         Ok(rec) => render_html(ChooseSpotlightTemplate {
             rec,
             counts: None,
             tab,
+            auth_enabled,
             include_nav_oob: false,
         })
         .into_response(),
@@ -235,6 +293,7 @@ async fn action_handler(
     } else {
         "all".to_string()
     };
+    let auth_enabled = state.auth.is_enabled();
 
     if query.spotlight == "1" {
         let status_label = if updated.is_watched() {
@@ -254,6 +313,7 @@ async fn action_handler(
             }),
             counts: Some(counts),
             tab,
+            auth_enabled,
             include_nav_oob: true,
         })
         .into_response();
@@ -263,27 +323,28 @@ async fn action_handler(
         v: updated,
         counts,
         tab,
+        auth_enabled,
     })
     .into_response()
 }
 
 async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM videos")
+    let ok = sqlx::query_scalar::<_, i64>("SELECT 1")
         .fetch_one(&state.pool)
         .await
-        .unwrap_or(-1);
-    (
-        StatusCode::OK,
-        format!(
-            "ok | videos={} | fts5={}",
-            total,
-            if state.fts5_enabled { "enabled" } else { "disabled" }
-        ),
-    )
+        .is_ok();
+    if ok {
+        (StatusCode::OK, "ok").into_response()
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "db error").into_response()
+    }
 }
 
 pub fn build_router(state: AppState) -> Router {
+    let auth_cfg = state.auth.clone();
     Router::new()
+        .route("/login", get(login_get_handler).post(login_post_handler))
+        .route("/logout", post(logout_handler))
         .route("/", get(all_handler))
         .route("/queue", get(queue_handler))
         .route("/videos/partial", get(videos_partial_handler))
@@ -291,5 +352,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/videos/{video_id}/action", post(action_handler))
         .route("/health", get(health_handler))
         .nest_service("/static", ServeDir::new("static"))
+        .layer(middleware::from_fn_with_state(auth_cfg, require_auth))
         .with_state(state)
 }

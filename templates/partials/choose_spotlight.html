@@ -3,6 +3,11 @@
   <nav class="nav" id="main-nav" aria-label="Primary" hx-swap-oob="true">
     <a href="/" class="nav-link {% if tab == "all" %}active{% endif %}">All <span class="nav-count">{{ c.unwatched }}</span></a>
     <a href="/queue" class="nav-link {% if tab == "queue" %}active{% endif %}">Queue <span class="nav-count">{{ c.queue }}</span></a>
+    {% if auth_enabled %}
+    <form method="post" action="/logout" class="logout-form">
+      <button type="submit" class="nav-link nav-logout">Sign out</button>
+    </form>
+    {% endif %}
   </nav>
   {% endif %}
 {% endif %}

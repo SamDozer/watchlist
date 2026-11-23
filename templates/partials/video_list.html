@@ -5,25 +5,19 @@
 {% endif %}
 
 <div class="results-meta">
-  <span><strong>{{ filtered_total }}</strong> videos matching</span>
+  <span><strong>{{ filtered_total }}</strong> videos</span>
 </div>
 
 {% if videos.is_empty() %}
   <section class="empty">
     {% if tab == "queue" %}
-      <p>Your Watch Later queue is empty.</p>
-      <p class="empty-sub">Use <strong>+ Queue</strong> on any video card to save it here.</p>
-    {% else if tab == "watched" %}
-      <p>No watched videos yet.</p>
-      <p class="empty-sub">Mark videos as <strong>Watched</strong> to track what you have finished.</p>
-    {% else if tab == "favorites" %}
-      <p>No favorites yet.</p>
-      <p class="empty-sub">Click <strong>Favorite</strong> on videos you want to keep close.</p>
+      <p>Your queue is empty.</p>
+      <p class="empty-sub">Click <strong>+ Queue</strong> on any video to line it up here.</p>
     {% else if params.has_active_filters() %}
       <p>No videos match your current search or filters.</p>
-      <a href="{% if tab == "discover" %}/{% else %}/{{ tab }}{% endif %}" class="btn">Clear filters</a>
+      <a href="{% if tab == "all" %}/{% else %}/queue{% endif %}" class="btn">Clear filters</a>
     {% else %}
-      <p>No videos available in this view.</p>
+      <p>No videos available.</p>
     {% endif %}
   </section>
 {% else %}

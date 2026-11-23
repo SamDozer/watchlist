@@ -1,4 +1,4 @@
 <option value="">All Subgenres</option>
 {% for sub in subgenres %}
-<option value="{{ sub }}" {% if selected_subgenre.as_str() == sub.as_str() %}selected{% endif %}>{{ sub }}</option>
+<option value="{{ sub.name }}" {% if selected_subgenre.as_str() == sub.name.as_str() %}selected{% endif %}>{{ sub.name }} ({{ sub.count }})</option>
 {% endfor %}

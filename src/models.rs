@@ -52,10 +52,6 @@ impl VideoCardRow {
         self.status == "skipped"
     }
 
-    pub fn is_favorited(&self) -> bool {
-        self.favorited != 0
-    }
-
     pub fn is_in_queue(&self) -> bool {
         self.in_queue != 0
     }
@@ -88,8 +84,8 @@ pub struct FilterParams {
 impl FilterParams {
     pub fn normalized_tab(&self) -> &str {
         match self.tab.as_str() {
-            "explore" | "queue" | "watched" | "favorites" => self.tab.as_str(),
-            _ => "discover",
+            "queue" => "queue",
+            _ => "all",
         }
     }
 
@@ -98,8 +94,7 @@ impl FilterParams {
             return self.status.as_str();
         }
         match self.normalized_tab() {
-            "discover" => "unwatched",
-            "watched" => "watched",
+            "all" => "unwatched",
             _ => "all",
         }
     }
@@ -121,8 +116,21 @@ pub struct NavCounts {
     pub total: i64,
     pub unwatched: i64,
     pub queue: i64,
-    pub watched: i64,
-    pub favorites: i64,
+    pub guitar: i64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct CountOption {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BucketCounts {
+    pub quick: i64,
+    pub medium: i64,
+    pub deep_dive: i64,
+    pub long_form: i64,
 }
 
 #[derive(Debug, Clone)]

@@ -45,14 +45,6 @@
       >{% if v.is_skipped() %}Skipped{% else %}Skip{% endif %}</button>
       <button
         type="button"
-        class="btn btn-sm {% if v.is_favorited() %}btn-fav{% endif %}"
-        hx-post="/videos/{{ v.video_id }}/action?kind=favorite&tab={{ tab }}"
-        hx-target="#card-{{ v.video_id }}"
-        hx-swap="outerHTML"
-        aria-label="Favorite"
-      >{% if v.is_favorited() %}★ Favorited{% else %}☆ Favorite{% endif %}</button>
-      <button
-        type="button"
         class="btn btn-sm {% if v.is_in_queue() %}btn-active{% endif %}"
         hx-post="/videos/{{ v.video_id }}/action?kind=queue&tab={{ tab }}"
         hx-target="#card-{{ v.video_id }}"

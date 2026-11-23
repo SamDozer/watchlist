@@ -11,10 +11,10 @@ use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
 use crate::discovery::{
-    apply_activity_action, choose_for_me, get_categories, get_nav_counts, get_subgenres,
-    query_videos, ActivityAction,
+    apply_activity_action, choose_for_me, get_bucket_counts, get_categories, get_nav_counts,
+    get_subgenres, query_videos, ActivityAction,
 };
-use crate::models::{FilterParams, NavCounts, Recommendation, VideoCardRow};
+use crate::models::{BucketCounts, CountOption, FilterParams, NavCounts, Recommendation, VideoCardRow};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,9 +27,10 @@ pub struct AppState {
 struct IndexTemplate {
     tab: String,
     counts: NavCounts,
+    buckets: BucketCounts,
     params: FilterParams,
-    categories: Vec<String>,
-    subgenres: Vec<String>,
+    categories: Vec<CountOption>,
+    subgenres: Vec<CountOption>,
     filtered_total: i64,
     videos: Vec<VideoCardRow>,
     next_offset: Option<i64>,
@@ -43,7 +44,7 @@ struct VideoListTemplate {
     filtered_total: i64,
     videos: Vec<VideoCardRow>,
     next_offset: Option<i64>,
-    subgenres: Vec<String>,
+    subgenres: Vec<CountOption>,
     selected_subgenre: String,
     include_subgenre_oob: bool,
 }
@@ -104,6 +105,10 @@ async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Opti
         Ok(c) => c,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
     };
+    let buckets = match get_bucket_counts(&state.pool).await {
+        Ok(b) => b,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
+    };
     let categories = match get_categories(&state.pool).await {
         Ok(c) => c,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
@@ -117,6 +122,7 @@ async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Opti
         Ok((filtered_total, videos, next_offset)) => render_html(IndexTemplate {
             tab: params.tab.clone(),
             counts,
+            buckets,
             params,
             categories,
             subgenres,
@@ -129,18 +135,11 @@ async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Opti
     }
 }
 
-async fn discover_handler(
+async fn all_handler(
     State(state): State<AppState>,
     Query(params): Query<FilterParams>,
 ) -> impl IntoResponse {
     render_page(state, params, None).await
-}
-
-async fn explore_handler(
-    State(state): State<AppState>,
-    Query(params): Query<FilterParams>,
-) -> impl IntoResponse {
-    render_page(state, params, Some("explore")).await
 }
 
 async fn queue_handler(
@@ -148,20 +147,6 @@ async fn queue_handler(
     Query(params): Query<FilterParams>,
 ) -> impl IntoResponse {
     render_page(state, params, Some("queue")).await
-}
-
-async fn watched_handler(
-    State(state): State<AppState>,
-    Query(params): Query<FilterParams>,
-) -> impl IntoResponse {
-    render_page(state, params, Some("watched")).await
-}
-
-async fn favorites_handler(
-    State(state): State<AppState>,
-    Query(params): Query<FilterParams>,
-) -> impl IntoResponse {
-    render_page(state, params, Some("favorites")).await
 }
 
 async fn videos_partial_handler(
@@ -172,14 +157,12 @@ async fn videos_partial_handler(
 
     if params.offset > 0 {
         return match query_videos(&state.pool, &params).await {
-            Ok((_total, videos, next_offset)) => {
-                render_html(VideoCardsTemplate {
-                    tab: params.tab.clone(),
-                    videos,
-                    next_offset,
-                })
-                .into_response()
-            }
+            Ok((_total, videos, next_offset)) => render_html(VideoCardsTemplate {
+                tab: params.tab.clone(),
+                videos,
+                next_offset,
+            })
+            .into_response(),
             Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
         };
     }
@@ -188,7 +171,7 @@ async fn videos_partial_handler(
         Ok(s) => s,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
     };
-    if !params.subgenre.is_empty() && !subgenres.iter().any(|s| s == &params.subgenre) {
+    if !params.subgenre.is_empty() && !subgenres.iter().any(|s| s.name == params.subgenre) {
         params.subgenre.clear();
     }
 
@@ -245,20 +228,19 @@ async fn action_handler(
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
     };
 
-    let tab = match query.tab.as_str() {
-        "explore" | "queue" | "watched" | "favorites" => query.tab.clone(),
-        _ => "discover".to_string(),
+    let tab = if query.tab == "queue" {
+        "queue".to_string()
+    } else {
+        "all".to_string()
     };
 
     if query.spotlight == "1" {
         let status_label = if updated.is_watched() {
             "Marked as watched"
         } else if updated.is_skipped() {
-            "Skipped — won't appear in Discover"
-        } else if updated.is_favorited() {
-            "Saved to Favorites"
+            "Skipped"
         } else if updated.is_in_queue() {
-            "Saved to Watch Later"
+            "Saved to Queue"
         } else {
             "Updated"
         };
@@ -300,11 +282,8 @@ async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
 
 pub fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(discover_handler))
-        .route("/explore", get(explore_handler))
+        .route("/", get(all_handler))
         .route("/queue", get(queue_handler))
-        .route("/watched", get(watched_handler))
-        .route("/favorites", get(favorites_handler))
         .route("/videos/partial", get(videos_partial_handler))
         .route("/choose", post(choose_handler))
         .route("/videos/{video_id}/action", post(action_handler))

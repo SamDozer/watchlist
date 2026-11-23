@@ -2,7 +2,7 @@ use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::{FilterParams, NavCounts, Recommendation, VideoCardRow};
+use crate::models::{BucketCounts, CountOption, FilterParams, NavCounts, Recommendation, VideoCardRow};
 
 pub const PAGE_SIZE: i64 = 48;
 
@@ -105,14 +105,13 @@ fn push_filter_clauses<'a>(qb: &mut QueryBuilder<'a, Sqlite>, params: &'a Filter
 }
 
 pub async fn get_nav_counts(pool: &SqlitePool) -> Result<NavCounts, sqlx::Error> {
-    let row = sqlx::query_as::<_, (i64, i64, i64, i64, i64)>(
+    let row = sqlx::query_as::<_, (i64, i64, i64, i64)>(
         r#"
         SELECT
             COUNT(*) AS total,
             SUM(CASE WHEN COALESCE(ua.status, 'unwatched') = 'unwatched' THEN 1 ELSE 0 END) AS unwatched,
             SUM(CASE WHEN ua.added_to_queue_at IS NOT NULL THEN 1 ELSE 0 END) AS queue_cnt,
-            SUM(CASE WHEN COALESCE(ua.status, 'unwatched') = 'watched' THEN 1 ELSE 0 END) AS watched_cnt,
-            SUM(CASE WHEN COALESCE(ua.favorited, 0) = 1 THEN 1 ELSE 0 END) AS fav_cnt
+            SUM(CASE WHEN v.is_guitar = 1 AND COALESCE(ua.status, 'unwatched') = 'unwatched' THEN 1 ELSE 0 END) AS guitar_cnt
         FROM videos v
         LEFT JOIN user_activity ua ON ua.video_id = v.video_id
         "#,
@@ -124,27 +123,73 @@ pub async fn get_nav_counts(pool: &SqlitePool) -> Result<NavCounts, sqlx::Error>
         total: row.0,
         unwatched: row.1,
         queue: row.2,
-        watched: row.3,
-        favorites: row.4,
+        guitar: row.3,
     })
 }
 
-pub async fn get_categories(pool: &SqlitePool) -> Result<Vec<String>, sqlx::Error> {
-    sqlx::query_scalar("SELECT DISTINCT category FROM videos WHERE category != '' ORDER BY category")
-        .fetch_all(pool)
-        .await
+pub async fn get_bucket_counts(pool: &SqlitePool) -> Result<BucketCounts, sqlx::Error> {
+    let row = sqlx::query_as::<_, (i64, i64, i64, i64)>(
+        r#"
+        SELECT
+            SUM(CASE WHEN v.watch_time_bucket = 'Quick (<5m)' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN v.watch_time_bucket = 'Medium (5-20m)' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN v.watch_time_bucket = 'Deep Dive (20-60m)' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN v.watch_time_bucket = 'Long-Form (>60m)' THEN 1 ELSE 0 END)
+        FROM videos v
+        LEFT JOIN user_activity ua ON ua.video_id = v.video_id
+        WHERE COALESCE(ua.status, 'unwatched') = 'unwatched'
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(BucketCounts {
+        quick: row.0,
+        medium: row.1,
+        deep_dive: row.2,
+        long_form: row.3,
+    })
 }
 
-pub async fn get_subgenres(pool: &SqlitePool, category: &str) -> Result<Vec<String>, sqlx::Error> {
+pub async fn get_categories(pool: &SqlitePool) -> Result<Vec<CountOption>, sqlx::Error> {
+    sqlx::query_as::<_, CountOption>(
+        r#"
+        SELECT v.category AS name, COUNT(*) AS count
+        FROM videos v
+        LEFT JOIN user_activity ua ON ua.video_id = v.video_id
+        WHERE v.category != '' AND COALESCE(ua.status, 'unwatched') = 'unwatched'
+        GROUP BY v.category
+        ORDER BY count DESC, v.category ASC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_subgenres(pool: &SqlitePool, category: &str) -> Result<Vec<CountOption>, sqlx::Error> {
     if category.is_empty() {
-        sqlx::query_scalar(
-            "SELECT DISTINCT subgenre FROM videos WHERE subgenre != '' ORDER BY subgenre",
+        sqlx::query_as::<_, CountOption>(
+            r#"
+            SELECT v.subgenre AS name, COUNT(*) AS count
+            FROM videos v
+            LEFT JOIN user_activity ua ON ua.video_id = v.video_id
+            WHERE v.subgenre != '' AND COALESCE(ua.status, 'unwatched') = 'unwatched'
+            GROUP BY v.subgenre
+            ORDER BY count DESC, v.subgenre ASC
+            "#,
         )
         .fetch_all(pool)
         .await
     } else {
-        sqlx::query_scalar(
-            "SELECT DISTINCT subgenre FROM videos WHERE category = ?1 AND subgenre != '' ORDER BY subgenre",
+        sqlx::query_as::<_, CountOption>(
+            r#"
+            SELECT v.subgenre AS name, COUNT(*) AS count
+            FROM videos v
+            LEFT JOIN user_activity ua ON ua.video_id = v.video_id
+            WHERE v.category = ?1 AND v.subgenre != '' AND COALESCE(ua.status, 'unwatched') = 'unwatched'
+            GROUP BY v.subgenre
+            ORDER BY count DESC, v.subgenre ASC
+            "#,
         )
         .bind(category)
         .fetch_all(pool)
@@ -184,13 +229,7 @@ pub async fn query_videos(
         "queue" => {
             list_qb.push(" ORDER BY ua.added_to_queue_at DESC, v.rank ASC ");
         }
-        "watched" => {
-            list_qb.push(" ORDER BY ua.watched_at DESC, v.rank ASC ");
-        }
-        "favorites" => {
-            list_qb.push(" ORDER BY v.importance_score DESC, v.rank ASC ");
-        }
-        "discover" => {
+        _ => {
             list_qb.push(
                 r#"
                 ORDER BY (
@@ -199,13 +238,9 @@ pub async fn query_videos(
                     + COALESCE((SELECT weight FROM user_preferences WHERE pref_type = 'subgenre' AND pref_key = v.subgenre), 0.0)
                     + COALESCE((SELECT weight FROM user_preferences WHERE pref_type = 'duration' AND pref_key = v.watch_time_bucket), 0.0)
                     + COALESCE((SELECT weight FROM user_preferences WHERE pref_type = 'language' AND pref_key = v.language), 0.0)
-                    + CASE WHEN COALESCE(ua.favorited, 0) = 1 THEN 6.0 ELSE 0.0 END
                 ) DESC, v.rank ASC
                 "#,
             );
-        }
-        _ => {
-            list_qb.push(" ORDER BY v.rank ASC ");
         }
     }
 
@@ -759,7 +794,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert!(fav.is_favorited());
+        assert_eq!(fav.favorited, 1);
 
         let q = apply_activity_action(&pool, "vid33333333", ActivityAction::ToggleQueue)
             .await
@@ -767,12 +802,11 @@ mod tests {
             .unwrap();
         assert!(q.is_in_queue());
 
-        let counts = get_nav_counts(&pool).await.unwrap();
-        assert_eq!(counts.total, 3);
-        assert_eq!(counts.watched, 1);
-        assert_eq!(counts.favorites, 1);
-        assert_eq!(counts.queue, 1);
-        assert_eq!(counts.unwatched, 2);
+    let counts = get_nav_counts(&pool).await.unwrap();
+    assert_eq!(counts.total, 3);
+    assert_eq!(counts.queue, 1);
+    assert_eq!(counts.unwatched, 2);
+    assert_eq!(counts.guitar, 1);
 
         // Original importance_score and rank remain untouched
         let (orig_score, orig_rank): (i64, i64) =

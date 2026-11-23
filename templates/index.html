@@ -33,17 +33,6 @@
         Choose for me
       </button>
       <span id="choose-loading" class="htmx-indicator loading-text">Picking...</span>
-      {% if tab == "discover" %}
-      <span class="hint">Showing unwatched videos ranked by importance and preferences</span>
-      {% else if tab == "explore" %}
-      <span class="hint">Browsing full catalog</span>
-      {% else if tab == "queue" %}
-      <span class="hint">Your Watch Later queue</span>
-      {% else if tab == "watched" %}
-      <span class="hint">Completed videos</span>
-      {% else if tab == "favorites" %}
-      <span class="hint">Your favorited videos</span>
-      {% endif %}
     </section>
 
     <div id="spotlight-slot"></div>
@@ -69,28 +58,43 @@
           autocomplete="off"
         />
         <span id="filter-loading" class="htmx-indicator loading-text">Updating...</span>
-        <a href="{% if tab == "discover" %}/{% else %}/{{ tab }}{% endif %}" class="btn btn-ghost">Reset</a>
+        <a href="{% if tab == "all" %}/{% else %}/queue{% endif %}" class="btn btn-ghost">Reset</a>
+      </div>
+
+      <div class="time-pills" role="radiogroup" aria-label="Duration">
+        <label class="time-pill">
+          <input type="radio" name="bucket" value="" class="filter-control" {% if params.bucket.is_empty() %}checked{% endif %} />
+          <span>Any time ({{ counts.unwatched }})</span>
+        </label>
+        <label class="time-pill">
+          <input type="radio" name="bucket" value="Quick (<5m)" class="filter-control" {% if params.bucket == "Quick (<5m)" %}checked{% endif %} />
+          <span>&lt; 5m ({{ buckets.quick }})</span>
+        </label>
+        <label class="time-pill">
+          <input type="radio" name="bucket" value="Medium (5-20m)" class="filter-control" {% if params.bucket == "Medium (5-20m)" %}checked{% endif %} />
+          <span>5–20m ({{ buckets.medium }})</span>
+        </label>
+        <label class="time-pill">
+          <input type="radio" name="bucket" value="Deep Dive (20-60m)" class="filter-control" {% if params.bucket == "Deep Dive (20-60m)" %}checked{% endif %} />
+          <span>20–60m ({{ buckets.deep_dive }})</span>
+        </label>
+        <label class="time-pill">
+          <input type="radio" name="bucket" value="Long-Form (>60m)" class="filter-control" {% if params.bucket == "Long-Form (>60m)" %}checked{% endif %} />
+          <span>60m+ ({{ buckets.long_form }})</span>
+        </label>
       </div>
 
       <div class="filter-grid">
         <select id="category-select" name="category" class="filter-control" aria-label="Category">
-          <option value="">All Categories</option>
+          <option value="">All Categories ({{ counts.unwatched }})</option>
           {% for cat in categories %}
-          <option value="{{ cat }}" {% if params.category.as_str() == cat.as_str() %}selected{% endif %}>{{ cat }}</option>
+          <option value="{{ cat.name }}" {% if params.category.as_str() == cat.name.as_str() %}selected{% endif %}>{{ cat.name }} ({{ cat.count }})</option>
           {% endfor %}
         </select>
 
         <select id="subgenre-select" name="subgenre" class="filter-control" aria-label="Subgenre">
           {% let selected_subgenre = params.subgenre.clone() %}
           {% include "partials/subgenre_options.html" %}
-        </select>
-
-        <select name="bucket" class="filter-control" aria-label="Duration">
-          <option value="">Any Duration</option>
-          <option value="Quick (<5m)" {% if params.bucket == "Quick (<5m)" %}selected{% endif %}>Under 5 minutes</option>
-          <option value="Medium (5-20m)" {% if params.bucket == "Medium (5-20m)" %}selected{% endif %}>5–20 minutes</option>
-          <option value="Deep Dive (20-60m)" {% if params.bucket == "Deep Dive (20-60m)" %}selected{% endif %}>20–60 minutes</option>
-          <option value="Long-Form (>60m)" {% if params.bucket == "Long-Form (>60m)" %}selected{% endif %}>Over 60 minutes</option>
         </select>
 
         <select name="language" class="filter-control" aria-label="Language">
@@ -101,20 +105,15 @@
         </select>
 
         <select name="short" class="filter-control" aria-label="Shorts filter">
-          <option value="">Shorts & Regular</option>
+          <option value="">Shorts &amp; Regular</option>
           <option value="0" {% if params.short == "0" %}selected{% endif %}>Exclude Shorts</option>
           <option value="1" {% if params.short == "1" %}selected{% endif %}>Shorts Only</option>
         </select>
 
-        {% if tab == "discover" || tab == "explore" %}
+        {% if tab == "all" %}
         <select name="status" class="filter-control" aria-label="Status">
-          {% if tab == "discover" %}
-          <option value="" {% if params.status.is_empty() %}selected{% endif %}>Unwatched (Default)</option>
-          {% else %}
-          <option value="" {% if params.status.is_empty() %}selected{% endif %}>All Statuses</option>
-          <option value="unwatched" {% if params.status == "unwatched" %}selected{% endif %}>Unwatched</option>
-          {% endif %}
-          <option value="all" {% if params.status == "all" %}selected{% endif %}>All Statuses</option>
+          <option value="" {% if params.status.is_empty() %}selected{% endif %}>Unwatched ({{ counts.unwatched }})</option>
+          <option value="all" {% if params.status == "all" %}selected{% endif %}>All ({{ counts.total }})</option>
           <option value="watched" {% if params.status == "watched" %}selected{% endif %}>Watched</option>
           <option value="skipped" {% if params.status == "skipped" %}selected{% endif %}>Skipped</option>
         </select>
@@ -122,7 +121,7 @@
 
         <label class="toggle-chip">
           <input type="checkbox" name="guitar" value="1" class="filter-control" {% if params.guitar == "1" %}checked{% endif %} />
-          <span>Guitar only</span>
+          <span>Guitar only ({{ counts.guitar }})</span>
         </label>
       </div>
     </form>

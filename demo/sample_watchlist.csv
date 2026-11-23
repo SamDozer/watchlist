@@ -1,0 +1,11 @@
+rank,importanceScore,language,watchTimeBucket,category,subgenre,isGuitar,isShort,classifiedBy,videoId,title,channel,duration,url
+1,98,en,"Deep Dive (20-60m)","Mathematics","Linear Algebra",false,false,demo,fNk_zzaMoSs,"Essence of linear algebra preview","3Blue1Brown","15:10",https://www.youtube.com/watch?v=fNk_zzaMoSs
+2,96,en,"Long-Form (>60m)","Software Engineering & Coding","Systems Programming",false,false,demo,BpPEoZW5IiY,"Rust Programming Course for Beginners","freeCodeCamp.org","1:42:00",https://www.youtube.com/watch?v=BpPEoZW5IiY
+3,95,en,"Medium (5-20m)","Neuroscience & Cognitive Neuroscience","Neural Networks",false,false,demo,aircAruvnKk,"But what is a neural network?","3Blue1Brown","19:13",https://www.youtube.com/watch?v=aircAruvnKk
+4,94,en,"Medium (5-20m)","Guitar Lessons & Practice","Chord Voicings",true,false,demo,BBz-Jyr23M4,"Beginner Guitar Chord Lesson","JustinGuitar","12:40",https://www.youtube.com/watch?v=BBz-Jyr23M4
+5,91,en,"Medium (5-20m)","Physics & Astronomy","Quantum Mechanics",false,false,demo,Q1YqgPAtzho,"Quantum Entanglement Explained","Veritasium","14:25",https://www.youtube.com/watch?v=Q1YqgPAtzho
+6,89,en,"Deep Dive (20-60m)","History & Civilizations","Ancient World",false,false,demo,Yocja_N5s1I,"The Agricultural Revolution","CrashCourse","11:10",https://www.youtube.com/watch?v=Yocja_N5s1I
+7,88,en,"Medium (5-20m)","Music Theory & Composition","Harmony",false,false,demo,rgaTLrZGlk0,"Music Theory in 16 Minutes","Andrew Huang","16:05",https://www.youtube.com/watch?v=rgaTLrZGlk0
+8,85,en,"Medium (5-20m)","Biology & Evolution","Cellular Biology",false,false,demo,URUJD5NEXC8,"Biology: Cell Structure","Nucleus Medical Media","7:21",https://www.youtube.com/watch?v=URUJD5NEXC8
+9,82,en,"Quick (<5m)","Philosophy & Ethics","Stoicism",false,false,demo,R9OCA6UGU-0,"The Philosophy of Stoicism","TED-Ed","4:50",https://www.youtube.com/watch?v=R9OCA6UGU-0
+10,80,en,"Medium (5-20m)","Cinema, Film & Storytelling","Cinematography",false,false,demo,Z1-XGuBWn08,"How Visual Storytelling Works","Every Frame a Painting","9:30",https://www.youtube.com/watch?v=Z1-XGuBWn08

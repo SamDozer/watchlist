@@ -1,0 +1,87 @@
+{% if include_nav_oob %}
+  {% if let Some(c) = counts %}
+  <nav class="nav" id="main-nav" aria-label="Primary" hx-swap-oob="true">
+    <a href="/" class="nav-link {% if tab == "discover" %}active{% endif %}">Discover <span class="nav-count">{{ c.unwatched }}</span></a>
+    <a href="/explore" class="nav-link {% if tab == "explore" %}active{% endif %}">Explore <span class="nav-count">{{ c.total }}</span></a>
+    <a href="/queue" class="nav-link {% if tab == "queue" %}active{% endif %}">Watch Later <span class="nav-count">{{ c.queue }}</span></a>
+    <a href="/watched" class="nav-link {% if tab == "watched" %}active{% endif %}">Watched <span class="nav-count">{{ c.watched }}</span></a>
+    <a href="/favorites" class="nav-link {% if tab == "favorites" %}active{% endif %}">Favorites <span class="nav-count">{{ c.favorites }}</span></a>
+  </nav>
+  {% endif %}
+{% endif %}
+
+{% if let Some(r) = rec %}
+<section class="spotlight" aria-label="Recommended video">
+  <div class="spotlight-head">
+    <span class="spotlight-kicker">Chosen for you</span>
+    <span class="spotlight-reason">{% if r.computed_score > 0 %}Score {{ r.computed_score }} · {% endif %}{{ r.reason }}</span>
+  </div>
+  <div class="spotlight-body">
+    <a class="thumb-wrap spotlight-thumb" href="{{ r.video.url }}" target="_blank" rel="noopener noreferrer">
+      <img
+        class="thumb"
+        src="{{ r.video.thumbnail_url() }}"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onerror="this.onerror=null;this.parentElement.classList.add('thumb-fallback');this.remove();"
+      />
+      {% if !r.video.duration.is_empty() %}
+      <span class="duration">{{ r.video.duration }}</span>
+      {% endif %}
+      <span class="score">{{ r.video.importance_score }}</span>
+    </a>
+
+    <div class="spotlight-info">
+      <h2 class="spotlight-title" dir="{{ r.video.text_dir() }}">
+        <a href="{{ r.video.url }}" target="_blank" rel="noopener noreferrer">{{ r.video.title }}</a>
+      </h2>
+      <p class="channel" dir="{{ r.video.text_dir() }}">{{ r.video.display_channel() }}</p>
+      <div class="tags">
+        <span class="tag tag-cat">{{ r.video.category }}</span>
+        {% if !r.video.subgenre.is_empty() %}
+        <span class="tag tag-sub">{{ r.video.subgenre }}</span>
+        {% endif %}
+        <span class="tag">{{ r.video.watch_time_bucket }}</span>
+      </div>
+
+      <div class="actions spotlight-actions">
+        <a class="btn btn-primary" href="{{ r.video.url }}" target="_blank" rel="noopener noreferrer">Watch</a>
+        <button
+          type="button"
+          class="btn {% if r.video.is_watched() %}btn-active{% endif %}"
+          hx-post="/videos/{{ r.video.video_id }}/action?kind=watched&spotlight=1&tab={{ tab }}"
+          hx-target="#spotlight-slot"
+          hx-swap="innerHTML"
+        >{% if r.video.is_watched() %}Watched ✓{% else %}Watched{% endif %}</button>
+        <button
+          type="button"
+          class="btn {% if r.video.is_skipped() %}btn-warn{% endif %}"
+          hx-post="/videos/{{ r.video.video_id }}/action?kind=skip&spotlight=1&tab={{ tab }}"
+          hx-target="#spotlight-slot"
+          hx-swap="innerHTML"
+        >{% if r.video.is_skipped() %}Skipped{% else %}Skip{% endif %}</button>
+        <button
+          type="button"
+          class="btn {% if r.video.is_in_queue() %}btn-active{% endif %}"
+          hx-post="/videos/{{ r.video.video_id }}/action?kind=queue&spotlight=1&tab={{ tab }}"
+          hx-target="#spotlight-slot"
+          hx-swap="innerHTML"
+        >{% if r.video.is_in_queue() %}Saved to Queue ✓{% else %}Save{% endif %}</button>
+        <button
+          type="button"
+          class="btn btn-ghost"
+          hx-post="/choose"
+          hx-include="#filter-form"
+          hx-target="#spotlight-slot"
+          hx-swap="innerHTML"
+        >Pick another</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% else %}
+<section class="empty spotlight-empty">
+  <p>No unwatched videos match these filters.</p>
+</section>
+{% endif %}

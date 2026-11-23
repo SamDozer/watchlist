@@ -1,0 +1,9 @@
+{% include "partials/card.html" %}
+
+<nav class="nav" id="main-nav" aria-label="Primary" hx-swap-oob="true">
+  <a href="/" class="nav-link {% if tab == "discover" %}active{% endif %}">Discover <span class="nav-count">{{ counts.unwatched }}</span></a>
+  <a href="/explore" class="nav-link {% if tab == "explore" %}active{% endif %}">Explore <span class="nav-count">{{ counts.total }}</span></a>
+  <a href="/queue" class="nav-link {% if tab == "queue" %}active{% endif %}">Watch Later <span class="nav-count">{{ counts.queue }}</span></a>
+  <a href="/watched" class="nav-link {% if tab == "watched" %}active{% endif %}">Watched <span class="nav-count">{{ counts.watched }}</span></a>
+  <a href="/favorites" class="nav-link {% if tab == "favorites" %}active{% endif %}">Favorites <span class="nav-count">{{ counts.favorites }}</span></a>
+</nav>

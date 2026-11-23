@@ -1,0 +1,11 @@
+/target/
+/data/
+*.db
+*.db-wal
+*.db-shm
+*.db.bak*
+*.csv
+!demo/sample_watchlist.csv
+.env
+.DS_Store
+Thumbs.db

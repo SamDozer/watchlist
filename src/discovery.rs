@@ -217,6 +217,7 @@ fn category_group_rank(name: &str) -> (&'static str, usize, usize) {
             "History, Geopolitics & Society",
             &[
                 "Geopolitics & World Affairs",
+                "Socialism, Communism & Class Politics",
                 "History & Civilizations",
                 "News & Regional Commentary",
                 "Culture, Anthropology & Society",
@@ -226,6 +227,7 @@ fn category_group_rank(name: &str) -> (&'static str, usize, usize) {
             "Cinema, Art & Literature",
             &[
                 "Cinema, Film & Storytelling",
+                "Manga & Anime",
                 "Literature, Books & Poetry",
                 "Visual Art & Design",
                 "Architecture & Urbanism",

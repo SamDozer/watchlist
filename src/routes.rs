@@ -11,10 +11,12 @@ use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
 use crate::discovery::{
-    apply_activity_action, choose_for_me, get_bucket_counts, get_categories, get_nav_counts,
+    apply_activity_action, choose_for_me, get_bucket_counts, get_category_groups, get_nav_counts,
     get_subgenres, query_videos, ActivityAction,
 };
-use crate::models::{BucketCounts, CountOption, FilterParams, NavCounts, Recommendation, VideoCardRow};
+use crate::models::{
+    BucketCounts, CategoryGroup, CountOption, FilterParams, NavCounts, Recommendation, VideoCardRow,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -29,7 +31,7 @@ struct IndexTemplate {
     counts: NavCounts,
     buckets: BucketCounts,
     params: FilterParams,
-    categories: Vec<CountOption>,
+    category_groups: Vec<CategoryGroup>,
     subgenres: Vec<CountOption>,
     filtered_total: i64,
     videos: Vec<VideoCardRow>,
@@ -109,7 +111,7 @@ async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Opti
         Ok(b) => b,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
     };
-    let categories = match get_categories(&state.pool).await {
+    let category_groups = match get_category_groups(&state.pool).await {
         Ok(c) => c,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {err}")).into_response(),
     };
@@ -124,7 +126,7 @@ async fn render_page(state: AppState, mut params: FilterParams, forced_tab: Opti
             counts,
             buckets,
             params,
-            categories,
+            category_groups,
             subgenres,
             filtered_total,
             videos,

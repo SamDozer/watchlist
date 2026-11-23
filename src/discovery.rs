@@ -2,7 +2,9 @@ use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::{BucketCounts, CountOption, FilterParams, NavCounts, Recommendation, VideoCardRow};
+use crate::models::{
+    BucketCounts, CategoryGroup, CountOption, FilterParams, NavCounts, Recommendation, VideoCardRow,
+};
 
 pub const PAGE_SIZE: i64 = 48;
 
@@ -151,19 +153,168 @@ pub async fn get_bucket_counts(pool: &SqlitePool) -> Result<BucketCounts, sqlx::
     })
 }
 
-pub async fn get_categories(pool: &SqlitePool) -> Result<Vec<CountOption>, sqlx::Error> {
-    sqlx::query_as::<_, CountOption>(
+fn category_group_rank(name: &str) -> (&'static str, usize, usize) {
+    const GROUPS: &[(&str, &[&str])] = &[
+        (
+            "Guitar & Music",
+            &[
+                "Guitar Lessons & Practice",
+                "Guitar Gear & Rig Rundowns",
+                "Music Theory & Composition",
+                "Audio Production & Sound Design",
+                "Music History & Appreciation",
+                "Albums & Live Performances",
+            ],
+        ),
+        (
+            "Mind, Brain & Philosophy",
+            &[
+                "Neuroscience & Cognitive Neuroscience",
+                "Psychology & Mental Health",
+                "Philosophy & Ethics",
+                "Religion & Theology",
+            ],
+        ),
+        (
+            "Biology, Medicine & Health",
+            &[
+                "Bioinformatics & Computational Biology",
+                "Genetics, Molecular & Cell Biology",
+                "Evolutionary Biology & Human Origins",
+                "Microbiology, Immunology & Ecology",
+                "Medicine, Clinical & Anatomy",
+                "Fitness, Training & Mobility",
+                "Nutrition & Sleep",
+            ],
+        ),
+        (
+            "Tech, AI & Coding",
+            &[
+                "AI & Machine Learning",
+                "Software Engineering & Coding",
+                "Tech, Hardware & Systems",
+                "Engineering & Applied Tech",
+            ],
+        ),
+        (
+            "Math & Hard Sciences",
+            &[
+                "Mathematics",
+                "Physics & Astronomy",
+                "Chemistry & Biochemistry",
+                "General Science",
+            ],
+        ),
+        (
+            "Arabic & Egyptian Explainers",
+            &[
+                "El Da7ee7 (الدحيح)",
+                "في الحضارة & Arabic History",
+                "Arabic Science & Explainers",
+            ],
+        ),
+        (
+            "History, Geopolitics & Society",
+            &[
+                "Geopolitics & World Affairs",
+                "History & Civilizations",
+                "News & Regional Commentary",
+                "Culture, Anthropology & Society",
+            ],
+        ),
+        (
+            "Cinema, Art & Literature",
+            &[
+                "Cinema, Film & Storytelling",
+                "Literature, Books & Poetry",
+                "Visual Art & Design",
+                "Architecture & Urbanism",
+            ],
+        ),
+        (
+            "Career, Learning & Finance",
+            &[
+                "Career & Job Skills",
+                "Productivity & Habits",
+                "Study Methods & Learning",
+                "Business & Economics",
+                "Finance & Investing",
+            ],
+        ),
+        (
+            "Languages",
+            &[
+                "Language Learning - German",
+                "Language Learning - English",
+                "Language Learning - Arabic",
+                "Language Learning - Polyglot & General",
+            ],
+        ),
+        (
+            "Lifestyle, Games & Entertainment",
+            &[
+                "Travel & Places",
+                "Food & Cooking",
+                "Lifestyle & Vlogs",
+                "Gaming & Esports",
+                "Chess & Strategy",
+                "Comedy, Satire & Memes",
+                "Talk Shows & Interviews",
+                "General Entertainment & Pop Culture",
+                "Other / Misc",
+            ],
+        ),
+    ];
+
+    for (g_idx, (label, items)) in GROUPS.iter().enumerate() {
+        if let Some(item_idx) = items.iter().position(|c| *c == name) {
+            return (label, g_idx, item_idx);
+        }
+    }
+    ("Other Topics", GROUPS.len(), usize::MAX)
+}
+
+pub async fn get_category_groups(pool: &SqlitePool) -> Result<Vec<CategoryGroup>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, CountOption>(
         r#"
         SELECT v.category AS name, COUNT(*) AS count
         FROM videos v
         LEFT JOIN user_activity ua ON ua.video_id = v.video_id
         WHERE v.category != '' AND COALESCE(ua.status, 'unwatched') = 'unwatched'
         GROUP BY v.category
-        ORDER BY count DESC, v.category ASC
+        ORDER BY v.category ASC
         "#,
     )
     .fetch_all(pool)
-    .await
+    .await?;
+
+    let mut tagged: Vec<((&'static str, usize, usize), CountOption)> = rows
+        .into_iter()
+        .map(|row| (category_group_rank(&row.name), row))
+        .collect();
+
+    tagged.sort_by(|a, b| {
+        a.0 .1
+            .cmp(&b.0 .1)
+            .then_with(|| a.0 .2.cmp(&b.0 .2))
+            .then_with(|| a.1.name.cmp(&b.1.name))
+    });
+
+    let mut groups: Vec<CategoryGroup> = Vec::new();
+    for ((label, _, _), opt) in tagged {
+        if let Some(last) = groups.last_mut() {
+            if last.label == label {
+                last.items.push(opt);
+                continue;
+            }
+        }
+        groups.push(CategoryGroup {
+            label: label.to_string(),
+            items: vec![opt],
+        });
+    }
+
+    Ok(groups)
 }
 
 pub async fn get_subgenres(pool: &SqlitePool, category: &str) -> Result<Vec<CountOption>, sqlx::Error> {

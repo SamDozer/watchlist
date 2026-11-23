@@ -125,6 +125,12 @@ pub struct CountOption {
     pub count: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct CategoryGroup {
+    pub label: String,
+    pub items: Vec<CountOption>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct BucketCounts {
     pub quick: i64,

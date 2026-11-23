@@ -87,8 +87,12 @@
       <div class="filter-grid">
         <select id="category-select" name="category" class="filter-control" aria-label="Category">
           <option value="">All Categories ({{ counts.unwatched }})</option>
-          {% for cat in categories %}
-          <option value="{{ cat.name }}" {% if params.category.as_str() == cat.name.as_str() %}selected{% endif %}>{{ cat.name }} ({{ cat.count }})</option>
+          {% for grp in category_groups %}
+          <optgroup label="{{ grp.label }}">
+            {% for cat in grp.items %}
+            <option value="{{ cat.name }}" {% if params.category.as_str() == cat.name.as_str() %}selected{% endif %}>{{ cat.name }} ({{ cat.count }})</option>
+            {% endfor %}
+          </optgroup>
           {% endfor %}
         </select>
 

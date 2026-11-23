@@ -190,9 +190,12 @@ fn category_group_rank(name: &str) -> (&'static str, usize, usize) {
         (
             "Tech, AI & Coding",
             &[
-                "AI & Machine Learning",
-                "Software Engineering & Coding",
-                "Tech, Hardware & Systems",
+                "AI Agents, LLMs & Prompting",
+                "Machine Learning & Deep Learning",
+                "AI Ethics, Society & Philosophy",
+                "Programming Languages & Coding",
+                "Software Architecture & DevOps",
+                "Hardware, PCs & Consumer Tech",
                 "Engineering & Applied Tech",
             ],
         ),

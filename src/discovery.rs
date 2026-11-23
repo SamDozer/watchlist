@@ -111,9 +111,9 @@ pub async fn get_nav_counts(pool: &SqlitePool) -> Result<NavCounts, sqlx::Error>
         r#"
         SELECT
             COUNT(*) AS total,
-            SUM(CASE WHEN COALESCE(ua.status, 'unwatched') = 'unwatched' THEN 1 ELSE 0 END) AS unwatched,
-            SUM(CASE WHEN ua.added_to_queue_at IS NOT NULL THEN 1 ELSE 0 END) AS queue_cnt,
-            SUM(CASE WHEN v.is_guitar = 1 AND COALESCE(ua.status, 'unwatched') = 'unwatched' THEN 1 ELSE 0 END) AS guitar_cnt
+            COALESCE(SUM(CASE WHEN COALESCE(ua.status, 'unwatched') = 'unwatched' THEN 1 ELSE 0 END), 0) AS unwatched,
+            COALESCE(SUM(CASE WHEN ua.added_to_queue_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS queue_cnt,
+            COALESCE(SUM(CASE WHEN v.is_guitar = 1 AND COALESCE(ua.status, 'unwatched') = 'unwatched' THEN 1 ELSE 0 END), 0) AS guitar_cnt
         FROM videos v
         LEFT JOIN user_activity ua ON ua.video_id = v.video_id
         "#,
@@ -133,10 +133,10 @@ pub async fn get_bucket_counts(pool: &SqlitePool) -> Result<BucketCounts, sqlx::
     let row = sqlx::query_as::<_, (i64, i64, i64, i64)>(
         r#"
         SELECT
-            SUM(CASE WHEN v.watch_time_bucket = 'Quick (<5m)' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN v.watch_time_bucket = 'Medium (5-20m)' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN v.watch_time_bucket = 'Deep Dive (20-60m)' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN v.watch_time_bucket = 'Long-Form (>60m)' THEN 1 ELSE 0 END)
+            COALESCE(SUM(CASE WHEN v.watch_time_bucket = 'Quick (<5m)' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN v.watch_time_bucket = 'Medium (5-20m)' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN v.watch_time_bucket = 'Deep Dive (20-60m)' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN v.watch_time_bucket = 'Long-Form (>60m)' THEN 1 ELSE 0 END), 0)
         FROM videos v
         LEFT JOIN user_activity ua ON ua.video_id = v.video_id
         WHERE COALESCE(ua.status, 'unwatched') = 'unwatched'
@@ -591,9 +591,11 @@ pub async fn choose_for_me(
             score += 4.0;
         }
 
-        // Diversity & anti-repeat penalties
-        if recent_ids.contains(&c.video_id) || c.recently_shown != 0 {
+        // Diversity & anti-repeat penalties (recent 25 shown only, not permanent)
+        if recent_ids.contains(&c.video_id) {
             score -= 35.0;
+        } else if c.recently_shown != 0 {
+            score -= 3.0;
         }
         if recent_categories.contains(&c.category) && params.category.is_empty() {
             score -= 10.0;
@@ -673,19 +675,19 @@ pub async fn choose_for_me(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivityAction {
-    ToggleWatched,
-    ToggleSkipped,
-    ToggleFavorite,
-    ToggleQueue,
+    Watched,
+    Skipped,
+    Favorite,
+    Queue,
 }
 
 impl ActivityAction {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "watched" => Some(Self::ToggleWatched),
-            "skip" => Some(Self::ToggleSkipped),
-            "favorite" => Some(Self::ToggleFavorite),
-            "queue" => Some(Self::ToggleQueue),
+            "watched" => Some(Self::Watched),
+            "skip" => Some(Self::Skipped),
+            "favorite" => Some(Self::Favorite),
+            "queue" => Some(Self::Queue),
             _ => None,
         }
     }
@@ -743,18 +745,35 @@ pub async fn apply_activity_action(
     video_id: &str,
     action: ActivityAction,
 ) -> Result<Option<VideoCardRow>, sqlx::Error> {
-    let existing = get_video_card(pool, video_id).await?;
+    let mut tx = pool.begin().await?;
+    let existing = sqlx::query_as::<_, VideoCardRow>(
+        r#"
+        SELECT
+            v.video_id, v.rank, v.importance_score, v.language, v.watch_time_bucket,
+            v.category, v.subgenre, v.is_guitar, v.is_short, v.classified_by,
+            v.title, v.channel, v.duration, v.url,
+            COALESCE(ua.status, 'unwatched') AS status,
+            COALESCE(ua.favorited, 0) AS favorited,
+            CASE WHEN ua.added_to_queue_at IS NOT NULL THEN 1 ELSE 0 END AS in_queue
+        FROM videos v
+        LEFT JOIN user_activity ua ON ua.video_id = v.video_id
+        WHERE v.video_id = ?1
+        "#,
+    )
+    .bind(video_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
     let Some(video) = existing else {
         return Ok(None);
     };
 
-    let mut tx = pool.begin().await?;
     let mut watched_delta = 0;
     let mut skipped_delta = 0;
     let mut favorited_delta = 0;
 
     match action {
-        ActivityAction::ToggleWatched => {
+        ActivityAction::Watched => {
             if video.status == "watched" {
                 sqlx::query(
                     r#"
@@ -784,7 +803,7 @@ pub async fn apply_activity_action(
                 watched_delta = 1;
             }
         }
-        ActivityAction::ToggleSkipped => {
+        ActivityAction::Skipped => {
             if video.status == "skipped" {
                 sqlx::query(
                     r#"
@@ -814,7 +833,7 @@ pub async fn apply_activity_action(
                 skipped_delta = 1;
             }
         }
-        ActivityAction::ToggleFavorite => {
+        ActivityAction::Favorite => {
             let next_fav = if video.favorited != 0 { 0 } else { 1 };
             favorited_delta = if next_fav == 1 { 1 } else { -1 };
             sqlx::query(
@@ -829,7 +848,7 @@ pub async fn apply_activity_action(
             .execute(&mut *tx)
             .await?;
         }
-        ActivityAction::ToggleQueue => {
+        ActivityAction::Queue => {
             if video.in_queue != 0 {
                 sqlx::query(
                     r#"
@@ -914,6 +933,27 @@ mod tests {
         (pool, tmp)
     }
 
+    #[tokio::test]
+    async fn empty_db_counts_do_not_fail_on_null_sum() {
+        let tmp = std::env::temp_dir().join(format!(
+            "watchlist_empty_{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let pool = init_pool(&tmp.join("empty.db")).await.unwrap();
+        let nav = get_nav_counts(&pool).await.unwrap();
+        let buckets = get_bucket_counts(&pool).await.unwrap();
+        assert_eq!(nav.total, 0);
+        assert_eq!(nav.unwatched, 0);
+        assert_eq!(buckets.quick, 0);
+        assert_eq!(buckets.long_form, 0);
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn sanitizes_fts_queries_safely() {
         assert_eq!(sanitize_fts_query("C++ neural!"), Some("\"C\"* AND \"neural\"*".to_string()));
@@ -926,10 +966,12 @@ mod tests {
         let (pool, tmp) = setup_test_db().await;
 
         // 1. FTS5 + category + duration filtering
-        let mut p = FilterParams::default();
-        p.q = "Plasticity".to_string();
-        p.category = "Neuroscience & Cognitive Neuroscience".to_string();
-        p.bucket = "Deep Dive (20-60m)".to_string();
+        let p = FilterParams {
+            q: "Plasticity".to_string(),
+            category: "Neuroscience & Cognitive Neuroscience".to_string(),
+            bucket: "Deep Dive (20-60m)".to_string(),
+            ..Default::default()
+        };
         let (cnt, rows, _) = query_videos(&pool, &p).await.unwrap();
         assert_eq!(cnt, 1);
         assert_eq!(rows[0].video_id, "vid11111111");
@@ -943,19 +985,19 @@ mod tests {
         assert_ne!(rec2.video.video_id, "vid11111111");
 
         // 3. Activity actions: mark watched, favorite, queue, skip
-        let w = apply_activity_action(&pool, "vid11111111", ActivityAction::ToggleWatched)
+        let w = apply_activity_action(&pool, "vid11111111", ActivityAction::Watched)
             .await
             .unwrap()
             .unwrap();
         assert!(w.is_watched());
 
-        let fav = apply_activity_action(&pool, "vid22222222", ActivityAction::ToggleFavorite)
+        let fav = apply_activity_action(&pool, "vid22222222", ActivityAction::Favorite)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(fav.favorited, 1);
 
-        let q = apply_activity_action(&pool, "vid33333333", ActivityAction::ToggleQueue)
+        let q = apply_activity_action(&pool, "vid33333333", ActivityAction::Queue)
             .await
             .unwrap()
             .unwrap();

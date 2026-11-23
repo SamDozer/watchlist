@@ -2,7 +2,6 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
@@ -12,8 +11,8 @@ pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
         }
     }
 
-    let db_url = format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"));
-    let options = SqliteConnectOptions::from_str(&db_url)?
+    let options = SqliteConnectOptions::new()
+        .filename(db_path)
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal)
@@ -36,19 +35,19 @@ pub async fn verify_fts5(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
     if enabled != 1 {
         return Ok(false);
     }
-    // Probe the FTS5 virtual table directly
     let _: i64 = sqlx::query_scalar("SELECT count(*) FROM videos_fts")
         .fetch_one(pool)
         .await?;
     Ok(true)
 }
 
-pub fn backup_database(db_path: &Path) -> std::io::Result<Option<PathBuf>> {
-    if !db_path.exists() {
-        return Ok(None);
-    }
-    let meta = fs::metadata(db_path)?;
-    if meta.len() == 0 {
+/// Create a WAL-safe, consistent SQLite snapshot using `VACUUM INTO`.
+pub async fn backup_database(pool: &SqlitePool, db_path: &Path) -> Result<Option<PathBuf>, sqlx::Error> {
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM videos")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+    if count == 0 {
         return Ok(None);
     }
     let ts = SystemTime::now()
@@ -58,6 +57,10 @@ pub fn backup_database(db_path: &Path) -> std::io::Result<Option<PathBuf>> {
     let mut backup_name = db_path.as_os_str().to_os_string();
     backup_name.push(format!(".bak.{ts}"));
     let backup_path = PathBuf::from(backup_name);
-    fs::copy(db_path, &backup_path)?;
+    let target = backup_path.to_string_lossy().to_string();
+    sqlx::query("VACUUM INTO ?1")
+        .bind(&target)
+        .execute(pool)
+        .await?;
     Ok(Some(backup_path))
 }

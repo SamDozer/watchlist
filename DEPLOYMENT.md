@@ -16,10 +16,14 @@ cd watchlist
 mkdir -p data
 ```
 
-### 2. Copy Your Existing Local Database
-From your Windows PC (so you keep all your videos and watched/queue progress):
-```powershell
-scp C:\Users\Hossam\.gemini\antigravity\scratch\watchlist\data\watchlist.db user@YOUR_SERVER_IP:~/watchlist/data/watchlist.db
+### 2. Copy Your Existing Local Database & Set Permissions
+From your local machine (so you keep all your videos and watched/queue progress):
+```bash
+scp ./data/watchlist.db user@YOUR_SERVER_IP:~/watchlist/data/watchlist.db
+```
+On the server, ensure the non-root container user (`UID 10001`) owns `./data`:
+```bash
+sudo chown -R 10001:10001 data
 ```
 
 ### 3. Configure Environment Secrets

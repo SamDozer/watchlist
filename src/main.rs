@@ -89,12 +89,6 @@ fn parse_args() -> Result<Config, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = parse_args().map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
-    let backup_path = if cfg.import_csv.is_some() {
-        db::backup_database(&cfg.db_path)?
-    } else {
-        None
-    };
-
     let pool = db::init_pool(&cfg.db_path).await?;
     let fts5_enabled = db::verify_fts5(&pool).await?;
     println!(
@@ -104,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     if let Some(csv_path) = &cfg.import_csv {
+        let backup_path = db::backup_database(&pool, &cfg.db_path).await?;
         let report = import::import_csv(&pool, csv_path, backup_path).await?;
         println!("=== CSV Import Report ===");
         println!("Source CSV:       {}", report.csv_path.display());
@@ -140,6 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pool,
         fts5_enabled,
         auth,
+        login_failures: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     };
     let app = routes::build_router(state);
     let addr = SocketAddr::new(cfg.host, cfg.port);

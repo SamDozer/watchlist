@@ -131,6 +131,10 @@ fn now_secs() -> u64 {
 }
 
 fn generate_ephemeral_secret() -> Vec<u8> {
+    let mut buf = [0u8; 32];
+    if getrandom::getrandom(&mut buf).is_ok() {
+        return buf.to_vec();
+    }
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -155,6 +159,7 @@ pub async fn require_auth(
     let is_public = path == "/login"
         || path == "/health"
         || path == "/static/style.css"
+        || path == "/static/htmx.min.js"
         || path == "/static/manifest.json"
         || path == "/static/sw.js"
         || path.starts_with("/static/icon-");

@@ -35,6 +35,7 @@
         hx-post="/videos/{{ v.video_id }}/action?kind=watched&tab={{ tab }}"
         hx-target="#card-{{ v.video_id }}"
         hx-swap="outerHTML"
+        hx-disabled-elt="this"
       >{% if v.is_watched() %}Watched ✓{% else %}Watched{% endif %}</button>
       <button
         type="button"
@@ -42,6 +43,7 @@
         hx-post="/videos/{{ v.video_id }}/action?kind=skip&tab={{ tab }}"
         hx-target="#card-{{ v.video_id }}"
         hx-swap="outerHTML"
+        hx-disabled-elt="this"
       >{% if v.is_skipped() %}Skipped{% else %}Skip{% endif %}</button>
       <button
         type="button"
@@ -49,6 +51,7 @@
         hx-post="/videos/{{ v.video_id }}/action?kind=queue&tab={{ tab }}"
         hx-target="#card-{{ v.video_id }}"
         hx-swap="outerHTML"
+        hx-disabled-elt="this"
       >{% if v.is_in_queue() %}Queued ✓{% else %}+ Queue{% endif %}</button>
     </div>
   </div>

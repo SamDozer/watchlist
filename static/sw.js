@@ -30,7 +30,17 @@ self.addEventListener('fetch', (event) => {
 
   if (SHELL_ASSETS.includes(url.pathname)) {
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
+      caches.match(event.request).then(
+        (cached) =>
+          cached ||
+          fetch(event.request).then((res) => {
+            if (res.ok && !res.redirected) {
+              const copy = res.clone();
+              caches.open(CACHE_NAME).then((c) => c.put(event.request, copy));
+            }
+            return res;
+          })
+      )
     );
     return;
   }

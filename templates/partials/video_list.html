@@ -1,5 +1,5 @@
 {% if include_subgenre_oob %}
-<select id="subgenre-select" name="subgenre" class="filter-control" aria-label="Subgenre" hx-swap-oob="true">
+<select id="subgenre-select" name="subgenre" class="filter-control" aria-label="Subgenre" hx-swap-oob="innerHTML">
   {% include "partials/subgenre_options.html" %}
 </select>
 {% endif %}

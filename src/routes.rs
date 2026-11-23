@@ -9,6 +9,8 @@ use axum::{
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tower_http::services::ServeDir;
 
 use crate::auth::{require_auth, AuthConfig};
@@ -26,6 +28,7 @@ pub struct AppState {
     #[allow(dead_code)]
     pub fts5_enabled: bool,
     pub auth: AuthConfig,
+    pub login_failures: Arc<Mutex<Vec<Instant>>>,
 }
 
 #[derive(Template)]
@@ -128,13 +131,38 @@ async fn login_post_handler(
     if !state.auth.is_enabled() {
         return Redirect::to("/").into_response();
     }
+
+    // Rate limit: max 5 failed attempts per 60 seconds
+    {
+        let mut attempts = state.login_failures.lock().unwrap_or_else(|e| e.into_inner());
+        let cutoff = Instant::now() - Duration::from_secs(60);
+        attempts.retain(|&t| t > cutoff);
+        if attempts.len() >= 5 {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [("Retry-After", "60")],
+                render_html(LoginTemplate {
+                    error: Some("Too many failed attempts. Please wait 60 seconds.".to_string()),
+                }),
+            )
+                .into_response();
+        }
+    }
+
     if state.auth.verify_password(&form.password) {
+        if let Ok(mut attempts) = state.login_failures.lock() {
+            attempts.clear();
+        }
         let cookie = state.auth.issue_session_cookie();
         return (
             [(header::SET_COOKIE, cookie)],
             Redirect::to("/"),
         )
             .into_response();
+    }
+
+    if let Ok(mut attempts) = state.login_failures.lock() {
+        attempts.push(Instant::now());
     }
     (
         StatusCode::UNAUTHORIZED,

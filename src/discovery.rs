@@ -216,9 +216,10 @@ fn category_group_rank(name: &str) -> (&'static str, usize, usize) {
         (
             "History, Geopolitics & Society",
             &[
-                "Geopolitics & World Affairs",
+                "Egyptian History & Society",
                 "Socialism, Communism & Class Politics",
                 "History & Civilizations",
+                "Geopolitics & World Affairs",
                 "News & Regional Commentary",
                 "Culture, Anthropology & Society",
             ],
